@@ -34,11 +34,13 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// Configurações do Supabase e Cloudinary (Substitua pelos seus valores reais se não estiverem no appsettings)
-string supabaseUrl = "ttps://jaazylhdixbedgcfplng.supabase.co";
-string supabaseKey = "sb_publishable_TVbgb8x4kzf7_nxRu0VpTQ_7WUdnVrg";
-var cloudAccount = new Account(" dvff4c4oo", "846643659543355", "iUBT6n0yFbcHY5o-eYPqmDkz7Mo");
+string supabaseUrl = "https://jaazylhdixbedgcfplng.supabase.co"; // Arrumado o HTTPS
+string supabaseKey = "sb_publishable_TVbgb8x4kzf7_nxRu0VpTQ_7WUdnVrg"; // Verifique se é a anon public
+
+// Arrumado o espaço no nome do Cloudinary
+var cloudAccount = new Account("dvff4c4oo", "846643659543355", "iUBT6n0yFbcHY5o-eYPqmDkz7Mo");
 var cloudinary = new Cloudinary(cloudAccount);
+
 
 // --- 3. ROTAS DA API (ENDPOINTS) ---
 
