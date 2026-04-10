@@ -35,9 +35,9 @@ if (app.Environment.IsDevelopment())
 }
 
 // Configurações do Supabase e Cloudinary (Substitua pelos seus valores reais se não estiverem no appsettings)
-string supabaseUrl = "SUA_URL_DO_SUPABASE";
-string supabaseKey = "SUA_KEY_DO_SUPABASE";
-var cloudAccount = new Account("SEU_CLOUD_NAME", "SUA_API_KEY", "SUA_API_SECRET");
+string supabaseUrl = "ttps://jaazylhdixbedgcfplng.supabase.co";
+string supabaseKey = "sb_publishable_TVbgb8x4kzf7_nxRu0VpTQ_7WUdnVrg";
+var cloudAccount = new Account(" dvff4c4oo", "846643659543355", "iUBT6n0yFbcHY5o-eYPqmDkz7Mo");
 var cloudinary = new Cloudinary(cloudAccount);
 
 // --- 3. ROTAS DA API (ENDPOINTS) ---
