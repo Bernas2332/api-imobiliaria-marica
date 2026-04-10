@@ -1,116 +1,137 @@
-using Supabase;
 using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
-using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddCors(options => {
-    options.AddPolicy("LiberarGeral", policy => {
-        policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
+// --- 1. CONFIGURAÇÃO DE SERVIÇOS (CORS, INFRA) ---
+
+// Configura o CORS para permitir que seu admin.html (local) e a Vercel acessem a API
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("PermissaoTotal", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyHeader()
+              .AllowAnyMethod();
     });
 });
 
-var supabaseUrl = builder.Configuration["Supabase:Url"] ?? "";
-var supabaseKey = builder.Configuration["Supabase:Key"] ?? "";
-builder.Services.AddScoped<Supabase.Client>(_ => 
-    new Supabase.Client(supabaseUrl, supabaseKey, new SupabaseOptions { AutoConnectRealtime = true })
-);
-
-var cloudinaryAccount = new Account(
-    builder.Configuration["Cloudinary:CloudName"],
-    builder.Configuration["Cloudinary:ApiKey"],
-    builder.Configuration["Cloudinary:ApiSecret"]
-);
-builder.Services.AddSingleton(new Cloudinary(cloudinaryAccount));
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
-app.UseCors("LiberarGeral");
 
-const string MINHA_CHAVE_MESTRA = "MaricaImoveis2026@!"; 
+// --- 2. ATIVAÇÃO DE MIDDLEWARES ---
 
-// 1. VITRINE
-app.MapGet("/imoveis", async (Supabase.Client client) => {
-    try {
-        var response = await client.From<SiteImobiliaria.Models.Imovel>().Where(x => x.Ativo == true).Get();
-        var lista = response.Models.Select(x => new {
-            id = x.Id,
-            titulo = x.Titulo ?? "Sem título",
-            descricao = x.Descricao ?? "",
-            preco = x.Preco ?? 0, // Essencial para o filtro no Front-end
-            precoFormatado = x.Preco.HasValue ? x.Preco.Value.ToString("N2") : "Sob Consulta",
-            fotos = x.Fotos
-        }).OrderByDescending(x => x.id).ToList();
-        return Results.Ok(lista);
-    } catch (Exception ex) { 
-        Console.WriteLine($"Erro Vitrine: {ex.Message}");
-        return Results.Problem("Erro ao carregar vitrine."); 
-    }
-});
+// IMPORTANTE: UseCors deve vir antes das rotas
+app.UseCors("PermissaoTotal");
 
-// 2. ADMIN LISTA
-app.MapGet("/admin-lista", async (Supabase.Client client) => {
-    try {
-        var response = await client.From<SiteImobiliaria.Models.Imovel>().Get();
-        var lista = response.Models.Select(x => new {
-            id = x.Id,
-            titulo = x.Titulo ?? "Imóvel Sem Título",
-            descricao = x.Descricao ?? "",
-            preco = x.Preco ?? 0,
-            ativo = x.Ativo
-        }).OrderByDescending(x => x.id).ToList();
-        return Results.Ok(lista);
-    } catch (Exception ex) { 
-        Console.WriteLine($"Erro Admin-Lista: {ex.Message}");
-        return Results.Json(new { erro = ex.Message }, statusCode: 500); 
-    }
-});
-
-// 3. SALVAR / EDITAR
-app.MapPost("/salvar-imovel", async (
-    [FromHeader(Name = "X-Api-Key")] string apiKey, 
-    [FromForm] IFormFile? arquivo, 
-    [FromForm] int idImovel, 
-    [FromForm] string titulo,
-    [FromForm] string descricao,
-    [FromForm] decimal preco,
-    [FromForm] bool ativo, 
-    Cloudinary cloudinary, 
-    Supabase.Client client) => 
+if (app.Environment.IsDevelopment())
 {
-    if (apiKey != MINHA_CHAVE_MESTRA) return Results.Unauthorized();
-    try {
-        string? urlGerada = null;
-        if (arquivo != null && arquivo.Length > 0) {
-            using var stream = arquivo.OpenReadStream();
-            var uploadParams = new ImageUploadParams() { File = new FileDescription(arquivo.FileName, stream), Folder = "imoveis_amigo" };
-            var result = await cloudinary.UploadAsync(uploadParams);
-            urlGerada = result.SecureUrl.ToString();
-        }
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
-        if (idImovel > 0) {
-            var query = client.From<SiteImobiliaria.Models.Imovel>().Where(x => x.Id == idImovel)
-                .Set(x => x.Titulo, titulo).Set(x => x.Descricao, descricao).Set(x => x.Preco, preco).Set(x => x.Ativo, ativo);
-            if (urlGerada != null) query = query.Set(x => x.Fotos, urlGerada);
-            await query.Update();
-        } else {
-            var novo = new SiteImobiliaria.Models.Imovel { Titulo = titulo, Descricao = descricao, Preco = preco, Fotos = urlGerada, Ativo = true };
-            await client.From<SiteImobiliaria.Models.Imovel>().Insert(novo);
-        }
-        return Results.Ok(new { mensagem = "Sucesso!" });
-    } catch (Exception ex) { 
-        Console.WriteLine($"Erro Salvar: {ex.Message}");
-        return Results.Problem(ex.Message); 
+// Configurações do Supabase e Cloudinary (Substitua pelos seus valores reais se não estiverem no appsettings)
+string supabaseUrl = "SUA_URL_DO_SUPABASE";
+string supabaseKey = "SUA_KEY_DO_SUPABASE";
+var cloudAccount = new Account("SEU_CLOUD_NAME", "SUA_API_KEY", "SUA_API_SECRET");
+var cloudinary = new Cloudinary(cloudAccount);
+
+// --- 3. ROTAS DA API (ENDPOINTS) ---
+
+// Rota para a Vitrine (Apenas ativos)
+app.MapGet("/imoveis", async () =>
+{
+    using var client = new HttpClient();
+    client.DefaultRequestHeaders.Add("apikey", supabaseKey);
+    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {supabaseKey}");
+
+    var res = await client.GetAsync($"{supabaseUrl}/rest/v1/imoveis?select=*&ativo=eq.true&order=id.desc");
+    var json = await res.Content.ReadAsStringAsync();
+    return Results.Content(json, "application/json");
+});
+
+// Rota para o Admin (Lista tudo, inclusive escondidos)
+app.MapGet("/imoveis/admin-lista", async () =>
+{
+    using var client = new HttpClient();
+    client.DefaultRequestHeaders.Add("apikey", supabaseKey);
+    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {supabaseKey}");
+
+    var res = await client.GetAsync($"{supabaseUrl}/rest/v1/imoveis?select=*&order=id.desc");
+    var json = await res.Content.ReadAsStringAsync();
+    return Results.Content(json, "application/json");
+});
+
+// Rota para Salvar/Editar
+app.MapPost("/imoveis/salvar-imovel", async (HttpRequest request) =>
+{
+    // Validação simples de API Key (Segurança)
+    if (request.Headers["X-Api-Key"] != "MaricaImoveis2026@!") return Results.Unauthorized();
+
+    var form = await request.ReadFormAsync();
+    var id = int.Parse(form["idImovel"]);
+    var titulo = form["titulo"].ToString();
+    var preco = double.Parse(form["preco"]);
+    var descricao = form["descricao"].ToString();
+    var ativo = bool.Parse(form["ativo"]);
+    string urlFoto = "";
+
+    // Se enviou foto nova, sobe pro Cloudinary
+    if (form.Files.Count > 0)
+    {
+        var file = form.Files[0];
+        using var stream = file.OpenReadStream();
+        var uploadParams = new ImageUploadParams()
+        {
+            File = new FileDescription(file.FileName, stream),
+            Folder = "imoveis_amigo"
+        };
+        var uploadResult = await cloudinary.UploadAsync(uploadParams);
+        urlFoto = uploadResult.SecureUrl.ToString();
     }
-}).DisableAntiforgery();
 
-// 4. DELETAR
-app.MapDelete("/deletar-imovel/{id}", async (int id, [FromHeader(Name = "X-Api-Key")] string apiKey, Supabase.Client client) => {
-    if (apiKey != MINHA_CHAVE_MESTRA) return Results.Unauthorized();
-    try {
-        await client.From<SiteImobiliaria.Models.Imovel>().Where(x => x.Id == id).Delete();
-        return Results.Ok();
-    } catch (Exception ex) { return Results.Problem(ex.Message); }
+    using var client = new HttpClient();
+    client.DefaultRequestHeaders.Add("apikey", supabaseKey);
+    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {supabaseKey}");
+
+    var dados = new { titulo, preco, descricao, ativo };
+    var jsonBody = JsonConvert.SerializeObject(dados);
+    
+    // Se ID for 0, cria novo (POST). Se for > 0, atualiza (PATCH).
+    HttpResponseMessage res;
+    if (id == 0) {
+        // Para novo, incluímos a foto obrigatoriamente
+        var novoDados = new { titulo, preco, descricao, ativo, fotos = urlFoto };
+        res = await client.PostAsync($"{supabaseUrl}/rest/v1/imoveis", 
+            new StringContent(JsonConvert.SerializeObject(novoDados), Encoding.UTF8, "application/json"));
+    } else {
+        // Se não enviou foto nova na edição, não sobrescreve a antiga no banco
+        string patchJson = urlFoto != "" 
+            ? JsonConvert.SerializeObject(new { titulo, preco, descricao, ativo, fotos = urlFoto })
+            : JsonConvert.SerializeObject(new { titulo, preco, descricao, ativo });
+            
+        res = await client.PatchAsync($"{supabaseUrl}/rest/v1/imoveis?id=eq.{id}", 
+            new StringContent(patchJson, Encoding.UTF8, "application/json"));
+    }
+
+    return res.IsSuccessStatusCode ? Results.Ok() : Results.BadRequest();
+});
+
+// Rota para Deletar
+app.MapDelete("/imoveis/deletar-imovel/{id}", async (int id, HttpRequest request) =>
+{
+    if (request.Headers["X-Api-Key"] != "MaricaImoveis2026@!") return Results.Unauthorized();
+
+    using var client = new HttpClient();
+    client.DefaultRequestHeaders.Add("apikey", supabaseKey);
+    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {supabaseKey}");
+
+    var res = await client.DeleteAsync($"{supabaseUrl}/rest/v1/imoveis?id=eq.{id}");
+    return res.IsSuccessStatusCode ? Results.Ok() : Results.BadRequest();
 });
 
 app.Run();
