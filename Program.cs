@@ -21,11 +21,12 @@ builder.Services.AddCors(options =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+app.MapGet("/ping", () => Results.Ok("pong"));
+
 var app = builder.Build();
 
 // --- 2. ATIVAÇÃO DE MIDDLEWARES ---
 
-// IMPORTANTE: UseCors deve vir antes das rotas
 app.UseCors("PermissaoTotal");
 
 if (app.Environment.IsDevelopment())
@@ -37,7 +38,6 @@ if (app.Environment.IsDevelopment())
 string supabaseUrl = "https://jaazylhdixbedgcfplng.supabase.co"; // Arrumado o HTTPS
 string supabaseKey = "sb_publishable_TVbgb8x4kzf7_nxRu0VpTQ_7WUdnVrg"; // Verifique se é a anon public
 
-// Arrumado o espaço no nome do Cloudinary
 var cloudAccount = new Account("dvff4c4oo", "846643659543355", "iUBT6n0yFbcHY5o-eYPqmDkz7Mo");
 var cloudinary = new Cloudinary(cloudAccount);
 
