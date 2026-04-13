@@ -21,8 +21,6 @@ builder.Services.AddCors(options =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-app.MapGet("/ping", () => Results.Ok("pong"));
-
 var app = builder.Build();
 
 // --- 2. ATIVAÇÃO DE MIDDLEWARES ---
@@ -135,5 +133,6 @@ app.MapDelete("/imoveis/deletar-imovel/{id}", async (int id, HttpRequest request
     var res = await client.DeleteAsync($"{supabaseUrl}/rest/v1/imoveis?id=eq.{id}");
     return res.IsSuccessStatusCode ? Results.Ok() : Results.BadRequest();
 });
+app.MapGet("/ping", () => Results.Ok("pong"));
 
 app.Run();
