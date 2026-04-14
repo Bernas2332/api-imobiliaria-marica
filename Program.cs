@@ -2,11 +2,22 @@ using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
 using Newtonsoft.Json;
 using System.Text;
+using Microsoft.AspNetCore.Http.Features;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// --- 1. CONFIGURAÇÃO DE SERVIÇOS ---
+// --- 1. CONFIGURAÇÃO DE LIMITES DE UPLOAD (100 MB) ---
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.Limits.MaxRequestBodySize = 104857600; 
+});
 
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 104857600; 
+});
+
+// --- 2. CONFIGURAÇÃO DE SERVIÇOS ---
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("PermissaoTotal", policy =>
@@ -22,8 +33,7 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// --- 2. ATIVAÇÃO DE MIDDLEWARES ---
-
+// --- 3. ATIVAÇÃO DE MIDDLEWARES ---
 app.UseCors("PermissaoTotal");
 
 if (app.Environment.IsDevelopment())
@@ -32,21 +42,16 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// Configurações Supabase e Cloudinary
-// Dica de CC: No futuro, coloque essas chaves no appsettings.json ou em variáveis de ambiente!
 string supabaseUrl = "https://jaazylhdixbedgcfplng.supabase.co";
 string supabaseKey = "sb_publishable_TVbgb8x4kzf7_nxRu0VpTQ_7WUdnVrg";
 
 var cloudAccount = new Account("dvff4c4oo", "846643659543355", "iUBT6n0yFbcHY5o-eYPqmDkz7Mo");
 var cloudinary = new Cloudinary(cloudAccount);
 
+// --- 4. ROTAS DA API ---
 
-// --- 3. ROTAS DA API (ENDPOINTS) ---
-
-// ROTA DE SAÚDE (Para o Cron-job não dar erro de tamanho)
 app.MapGet("/ping", () => Results.Ok("pong"));
 
-// Rota para a Vitrine (Apenas ativos)
 app.MapGet("/imoveis", async () =>
 {
     using var client = new HttpClient();
@@ -58,7 +63,6 @@ app.MapGet("/imoveis", async () =>
     return Results.Content(json, "application/json");
 });
 
-// Rota para o Admin (Lista tudo)
 app.MapGet("/imoveis/admin-lista", async () =>
 {
     using var client = new HttpClient();
@@ -70,7 +74,6 @@ app.MapGet("/imoveis/admin-lista", async () =>
     return Results.Content(json, "application/json");
 });
 
-// Rota para Salvar/Editar (Múltiplas Fotos + Tipo)
 app.MapPost("/imoveis/salvar-imovel", async (HttpRequest request) =>
 {
     if (request.Headers["X-Api-Key"] != "MaricaImoveis2026@!") return Results.Unauthorized();
@@ -78,15 +81,15 @@ app.MapPost("/imoveis/salvar-imovel", async (HttpRequest request) =>
     var form = await request.ReadFormAsync();
     var id = int.Parse(form["idImovel"]);
     var titulo = form["titulo"].ToString();
+    var tipo = form["tipo"].ToString().ToLower();
     
-    // CAPTURA DO NOVO CAMPO
-    var tipo = form["tipo"].ToString().ToLower(); 
+    // Tratamento para evitar erro de ponto/vírgula no preço
+    var precoStr = form["preco"].ToString().Replace(",", ".");
+    var preco = double.Parse(precoStr, System.Globalization.CultureInfo.InvariantCulture);
     
-    var preco = double.Parse(form["preco"]);
     var descricao = form["descricao"].ToString();
     var ativo = bool.Parse(form["ativo"]);
     
-    // Lista para acumular links do Cloudinary
     List<string> linksSubidos = new List<string>();
 
     if (form.Files.Count > 0)
@@ -104,7 +107,6 @@ app.MapPost("/imoveis/salvar-imovel", async (HttpRequest request) =>
         }
     }
 
-    // Une os links em string separada por vírgula
     string urlFotosFinal = string.Join(",", linksSubidos);
 
     using var client = new HttpClient();
@@ -115,14 +117,12 @@ app.MapPost("/imoveis/salvar-imovel", async (HttpRequest request) =>
     
     if (id == 0) 
     {
-        // NOVO IMÓVEL: Inclui o 'tipo' no JSON
         var novoDados = new { titulo, tipo, preco, descricao, ativo, fotos = urlFotosFinal };
         res = await client.PostAsync($"{supabaseUrl}/rest/v1/imoveis", 
             new StringContent(JsonConvert.SerializeObject(novoDados), Encoding.UTF8, "application/json"));
     } 
     else 
     {
-        // EDITAR IMÓVEL: Inclui o 'tipo' no JSON
         object dadosUpdate;
         if (!string.IsNullOrEmpty(urlFotosFinal)) {
             dadosUpdate = new { titulo, tipo, preco, descricao, ativo, fotos = urlFotosFinal };
@@ -134,10 +134,20 @@ app.MapPost("/imoveis/salvar-imovel", async (HttpRequest request) =>
             new StringContent(JsonConvert.SerializeObject(dadosUpdate), Encoding.UTF8, "application/json"));
     }
 
-    return res.IsSuccessStatusCode ? Results.Ok() : Results.BadRequest();
+    if (res.IsSuccessStatusCode) 
+    {
+        return Results.Ok();
+    } 
+    else 
+    {
+        var erroSupabase = await res.Content.ReadAsStringAsync();
+        Console.WriteLine("\n=== ERRO NO SUPABASE ===");
+        Console.WriteLine(erroSupabase);
+        Console.WriteLine("========================\n");
+        return Results.BadRequest(erroSupabase);
+    }
 });
 
-// Rota para Deletar
 app.MapDelete("/imoveis/deletar-imovel/{id}", async (int id, HttpRequest request) =>
 {
     if (request.Headers["X-Api-Key"] != "MaricaImoveis2026@!") return Results.Unauthorized();
