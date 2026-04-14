@@ -33,6 +33,7 @@ if (app.Environment.IsDevelopment())
 }
 
 // Configurações Supabase e Cloudinary
+// Dica de CC: No futuro, coloque essas chaves no appsettings.json ou em variáveis de ambiente!
 string supabaseUrl = "https://jaazylhdixbedgcfplng.supabase.co";
 string supabaseKey = "sb_publishable_TVbgb8x4kzf7_nxRu0VpTQ_7WUdnVrg";
 
@@ -69,7 +70,7 @@ app.MapGet("/imoveis/admin-lista", async () =>
     return Results.Content(json, "application/json");
 });
 
-// Rota para Salvar/Editar (Múltiplas Fotos)
+// Rota para Salvar/Editar (Múltiplas Fotos + Tipo)
 app.MapPost("/imoveis/salvar-imovel", async (HttpRequest request) =>
 {
     if (request.Headers["X-Api-Key"] != "MaricaImoveis2026@!") return Results.Unauthorized();
@@ -77,6 +78,10 @@ app.MapPost("/imoveis/salvar-imovel", async (HttpRequest request) =>
     var form = await request.ReadFormAsync();
     var id = int.Parse(form["idImovel"]);
     var titulo = form["titulo"].ToString();
+    
+    // CAPTURA DO NOVO CAMPO
+    var tipo = form["tipo"].ToString().ToLower(); 
+    
     var preco = double.Parse(form["preco"]);
     var descricao = form["descricao"].ToString();
     var ativo = bool.Parse(form["ativo"]);
@@ -110,18 +115,19 @@ app.MapPost("/imoveis/salvar-imovel", async (HttpRequest request) =>
     
     if (id == 0) 
     {
-        var novoDados = new { titulo, preco, descricao, ativo, fotos = urlFotosFinal };
+        // NOVO IMÓVEL: Inclui o 'tipo' no JSON
+        var novoDados = new { titulo, tipo, preco, descricao, ativo, fotos = urlFotosFinal };
         res = await client.PostAsync($"{supabaseUrl}/rest/v1/imoveis", 
             new StringContent(JsonConvert.SerializeObject(novoDados), Encoding.UTF8, "application/json"));
     } 
     else 
     {
+        // EDITAR IMÓVEL: Inclui o 'tipo' no JSON
         object dadosUpdate;
-        // Se enviou fotos novas, atualiza o campo. Se não, mantém o antigo.
         if (!string.IsNullOrEmpty(urlFotosFinal)) {
-            dadosUpdate = new { titulo, preco, descricao, ativo, fotos = urlFotosFinal };
+            dadosUpdate = new { titulo, tipo, preco, descricao, ativo, fotos = urlFotosFinal };
         } else {
-            dadosUpdate = new { titulo, preco, descricao, ativo };
+            dadosUpdate = new { titulo, tipo, preco, descricao, ativo };
         }
 
         res = await client.PatchAsync($"{supabaseUrl}/rest/v1/imoveis?id=eq.{id}", 
