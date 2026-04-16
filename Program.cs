@@ -42,8 +42,14 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// ==========================================
+// CONFIGURAÇÕES SEGURAS DE BANCO DE DADOS
+// ==========================================
 string supabaseUrl = "https://jaazylhdixbedgcfplng.supabase.co";
-string supabaseKey = "sb_publishable_TVbgb8x4kzf7_nxRu0VpTQ_7WUdnVrg";
+
+// O sistema agora lê a "Service Role Key" (Chave Secreta) das variáveis de ambiente do Render.
+// O "??" significa: Se não achar no Render (ex: testando localmente), use o que está nas aspas.
+string supabaseKey = Environment.GetEnvironmentVariable("SUPABASE_KEY") ?? "";
 
 var cloudAccount = new Account("dvff4c4oo", "846643659543355", "iUBT6n0yFbcHY5o-eYPqmDkz7Mo");
 var cloudinary = new Cloudinary(cloudAccount);
