@@ -42,15 +42,10 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// ==========================================
-// CONFIGURAÇÕES SEGURAS DE BANCO DE DADOS
-// ==========================================
 string supabaseUrl = "https://jaazylhdixbedgcfplng.supabase.co";
-
-// O sistema agora lê a "Service Role Key" (Chave Secreta) das variáveis de ambiente do Render.
-// O "??" significa: Se não achar no Render (ex: testando localmente), use o que está nas aspas.
 string supabaseKey = Environment.GetEnvironmentVariable("SUPABASE_KEY") ?? "";
 
+// Lembre-se: Para a construtora, isso aqui também deve virar Variável de Ambiente!
 var cloudAccount = new Account("dvff4c4oo", "846643659543355", "iUBT6n0yFbcHY5o-eYPqmDkz7Mo");
 var cloudinary = new Cloudinary(cloudAccount);
 
@@ -64,7 +59,8 @@ app.MapGet("/imoveis", async () =>
     client.DefaultRequestHeaders.Add("apikey", supabaseKey);
     client.DefaultRequestHeaders.Add("Authorization", $"Bearer {supabaseKey}");
 
-    var res = await client.GetAsync($"{supabaseUrl}/rest/v1/imoveis?select=*&ativo=eq.true&order=id.desc");
+    // Ordenação: 1º Prioridade (ascendente: 1, 2, 3), 2º ID (descendente: mais novo primeiro)
+    var res = await client.GetAsync($"{supabaseUrl}/rest/v1/imoveis?select=*&ativo=eq.true&order=prioridade.asc,id.desc");
     var json = await res.Content.ReadAsStringAsync();
     return Results.Content(json, "application/json");
 });
@@ -75,7 +71,8 @@ app.MapGet("/imoveis/admin-lista", async () =>
     client.DefaultRequestHeaders.Add("apikey", supabaseKey);
     client.DefaultRequestHeaders.Add("Authorization", $"Bearer {supabaseKey}");
 
-    var res = await client.GetAsync($"{supabaseUrl}/rest/v1/imoveis?select=*&order=id.desc");
+    // Ordenação mantida para o painel de admin também
+    var res = await client.GetAsync($"{supabaseUrl}/rest/v1/imoveis?select=*&order=prioridade.asc,id.desc");
     var json = await res.Content.ReadAsStringAsync();
     return Results.Content(json, "application/json");
 });
@@ -89,12 +86,18 @@ app.MapPost("/imoveis/salvar-imovel", async (HttpRequest request) =>
     var titulo = form["titulo"].ToString();
     var tipo = form["tipo"].ToString().ToLower();
     
-    // Tratamento para evitar erro de ponto/vírgula no preço
     var precoStr = form["preco"].ToString().Replace(",", ".");
     var preco = double.Parse(precoStr, System.Globalization.CultureInfo.InvariantCulture);
     
     var descricao = form["descricao"].ToString();
     var ativo = bool.Parse(form["ativo"]);
+    
+    // Capturando a prioridade (se vier vazio, assume 2 como padrão normal)
+    int prioridade = 2;
+    if (!string.IsNullOrEmpty(form["prioridade"]))
+    {
+        prioridade = int.Parse(form["prioridade"]);
+    }
     
     List<string> linksSubidos = new List<string>();
 
@@ -123,7 +126,8 @@ app.MapPost("/imoveis/salvar-imovel", async (HttpRequest request) =>
     
     if (id == 0) 
     {
-        var novoDados = new { titulo, tipo, preco, descricao, ativo, fotos = urlFotosFinal };
+        // Adicionado o campo prioridade no envio novo
+        var novoDados = new { titulo, tipo, preco, descricao, ativo, prioridade, fotos = urlFotosFinal };
         res = await client.PostAsync($"{supabaseUrl}/rest/v1/imoveis", 
             new StringContent(JsonConvert.SerializeObject(novoDados), Encoding.UTF8, "application/json"));
     } 
@@ -131,9 +135,10 @@ app.MapPost("/imoveis/salvar-imovel", async (HttpRequest request) =>
     {
         object dadosUpdate;
         if (!string.IsNullOrEmpty(urlFotosFinal)) {
-            dadosUpdate = new { titulo, tipo, preco, descricao, ativo, fotos = urlFotosFinal };
+            // Adicionado o campo prioridade na atualização
+            dadosUpdate = new { titulo, tipo, preco, descricao, ativo, prioridade, fotos = urlFotosFinal };
         } else {
-            dadosUpdate = new { titulo, tipo, preco, descricao, ativo };
+            dadosUpdate = new { titulo, tipo, preco, descricao, ativo, prioridade };
         }
 
         res = await client.PatchAsync($"{supabaseUrl}/rest/v1/imoveis?id=eq.{id}", 
